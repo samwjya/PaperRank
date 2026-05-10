@@ -1,24 +1,60 @@
+import os
 import requests
 from rank_bm25 import BM25Okapi
 
 
-SEMANTIC_SCHOLAR_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
-FIELDS = "title,abstract,year,authors,citationCount"
+OPEN_ALEX_URL = "https://api.openalex.org/works"
+
+
+def _load_api_key() -> str:
+    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    with open(env_path) as f:
+        for line in f:
+            if line.startswith("OPEN_ALEX_API="):
+                return line.strip().split("=", 1)[1]
+    return ""
+
+
+def _reconstruct_abstract(inverted_index: dict) -> str:
+    """OpenAlex stores abstracts as an inverted index; reconstruct plain text."""
+    if not inverted_index:
+        return ""
+    max_pos = max(pos for positions in inverted_index.values() for pos in positions)
+    words = [""] * (max_pos + 1)
+    for word, positions in inverted_index.items():
+        for pos in positions:
+            words[pos] = word
+    return " ".join(words)
 
 
 def fetch_papers(query: str, limit: int = 50) -> list[dict]:
-    """Fetch candidate papers from the Semantic Scholar API."""
+    """Fetch candidate papers from the OpenAlex API."""
     params = {
-        "query": query,
-        "limit": limit,
-        "fields": FIELDS,
+        "search.semantic": query,
+        "per_page": min(limit, 200),
+        "api_key": _load_api_key(),
     }
-    response = requests.get(SEMANTIC_SCHOLAR_URL, params=params, timeout=15)
+    response = requests.get(OPEN_ALEX_URL, params=params, timeout=15)
     response.raise_for_status()
-    data = response.json()
-    papers = data.get("data", [])
-    # Drop papers with no abstract — BM25 and reranker both need text
-    return [p for p in papers if p.get("abstract")]
+    raw_papers = response.json().get("results", [])
+
+    papers = []
+    for p in raw_papers:
+        abstract = _reconstruct_abstract(p.get("abstract_inverted_index") or {})
+        if not abstract:
+            continue
+        papers.append({
+            "title": p.get("title") or "",
+            "abstract": abstract,
+            "year": p.get("publication_year"),
+            "citationCount": p.get("cited_by_count"),
+            "authors": [
+                {"name": a["author"]["display_name"]}
+                for a in p.get("authorships", [])
+                if a.get("author") and a["author"].get("display_name")
+            ],
+        })
+    return papers
 
 
 def tokenize(text: str) -> list[str]:
