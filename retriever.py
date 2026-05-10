@@ -44,6 +44,7 @@ def fetch_papers(query: str, limit: int = 50) -> list[dict]:
         if not abstract:
             continue
         papers.append({
+            "paperId": p.get("id") or "",
             "title": p.get("title") or "",
             "abstract": abstract,
             "year": p.get("publication_year"),
