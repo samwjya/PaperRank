@@ -83,7 +83,9 @@ with col_bm25:
         else:
             note = ""
 
-        st.markdown(f"**#{rank}**{note}  \n{title}  \n`BM25: {score}`")
+        url = paper.get("url", "")
+        title_md = f"[{title}]({url})" if url else title
+        st.markdown(f"**#{rank}**{note}  \n{title_md}  \n`BM25: {score}`")
 
 with col_ce:
     st.markdown("#### CrossEncoder Ranking")
@@ -100,7 +102,9 @@ with col_ce:
         else:
             note = ""
 
-        st.markdown(f"**#{rank}**{note}  \n{title}  \n`CE: {score}`")
+        url = paper.get("url", "")
+        title_md = f"[{title}]({url})" if url else title
+        st.markdown(f"**#{rank}**{note}  \n{title_md}  \n`CE: {score}`")
 
 # ── Metrics cards ─────────────────────────────────────────────────────────────
 st.divider()
