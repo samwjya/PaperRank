@@ -43,12 +43,16 @@ def fetch_papers(query: str, limit: int = 50) -> list[dict]:
         abstract = _reconstruct_abstract(p.get("abstract_inverted_index") or {})
         if not abstract:
             continue
+        doi = p.get("doi") or ""
+        openalex_id = p.get("id") or ""
+        url = doi if doi else openalex_id
         papers.append({
-            "paperId": p.get("id") or "",
+            "paperId": openalex_id,
             "title": p.get("title") or "",
             "abstract": abstract,
             "year": p.get("publication_year"),
             "citationCount": p.get("cited_by_count"),
+            "url": url,
             "authors": [
                 {"name": a["author"]["display_name"]}
                 for a in p.get("authorships", [])

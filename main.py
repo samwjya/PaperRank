@@ -57,6 +57,7 @@ def main() -> None:
             print(f"[#{paper['bm25_rank']}] score={paper['bm25_score']}")
             print(f"  {paper['title']}")
             print(f"  {paper.get('year', 'N/A')} | {paper.get('citationCount', 'N/A')} citations | {authors}")
+            print(f"  {paper.get('url') or 'N/A'}")
             print()
         return
 

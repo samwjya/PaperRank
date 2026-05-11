@@ -118,6 +118,18 @@ def print_results(query: str, bm25_papers: list[dict], reranked_papers: list[dic
     print(f"{'MRR':<20} {metrics['bm25_mrr']:>10.4f} {metrics['ce_mrr']:>14.4f}")
     print("-" * 40)
 
+    print()
+    print("BM25 Links:")
+    for i, p in enumerate(bm25_papers[:k], start=1):
+        url = p.get("url") or "N/A"
+        print(f"  {i:>2}. {p.get('title', '')[:70]}  —  {url}")
+
+    print()
+    print("Reranked Links:")
+    for i, p in enumerate(reranked_papers[:k], start=1):
+        url = p.get("url") or "N/A"
+        print(f"  {i:>2}. {p.get('title', '')[:70]}  —  {url}")
+
 
 if __name__ == "__main__":
     import argparse
