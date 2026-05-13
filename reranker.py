@@ -2,12 +2,12 @@ from concurrent.futures import ThreadPoolExecutor
 from sentence_transformers import CrossEncoder
 
 
-DEFAULT_MODEL = "BAAI/bge-reranker-v2-m3"
+DEFAULT_MODEL = "jinaai/jina-reranker-v2-base-multilingual"
 
 ENSEMBLE_MODELS = [
+    "jinaai/jina-reranker-v2-base-multilingual",
+    "Alibaba-NLP/gte-multilingual-reranker-base",
     "BAAI/bge-reranker-v2-m3",
-    "cross-encoder/ms-marco-MiniLM-L-6-v2",
-    "cross-encoder/ms-marco-electra-base",
 ]
 
 
