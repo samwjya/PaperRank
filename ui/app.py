@@ -5,18 +5,10 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit as st
 from retriever import fetch_papers
-from reranker import load_model, load_models, rerank, ensemble_rerank, ENSEMBLE_MODELS
+from reranker import load_models, ensemble_rerank, ENSEMBLE_MODELS
 from evaluate import evaluate
 
 st.set_page_config(page_title="PaperRank", layout="wide")
-
-MODEL_NAME = "BAAI/bge-reranker-v2-m3"
-
-
-@st.cache_resource
-def get_model():
-    return load_model(MODEL_NAME)
-
 
 @st.cache_resource
 def get_models():
@@ -31,11 +23,6 @@ with st.sidebar:
     query = st.text_input("Search query", placeholder="e.g. transformer models for information retrieval")
     limit = st.slider("Candidates to fetch", min_value=10, max_value=200, value=50, step=10)
     k = st.slider("Top-k results", min_value=5, max_value=20, value=10)
-    use_ensemble = st.checkbox(
-        "Ensemble mode (3 models)",
-        value=False,
-        help="Scores with BGE-M3 + MiniLM + Electra, normalizes each to [0,1], then averages.",
-    )
     run = st.button("Run pipeline", type="primary", use_container_width=True, disabled=not query.strip())
 
 # ── Main area ─────────────────────────────────────────────────────────────────
@@ -59,17 +46,11 @@ with st.spinner(f"[1/3] Fetching papers from OpenAlex..."):
 
 st.success(f"[1/3] Retrieved {len(baseline_papers)} papers with abstracts.")
 
-# Stage 2 — load model(s) (cached) and rerank
-if use_ensemble:
-    with st.spinner(f"[2/3] Running ensemble reranking ({len(ENSEMBLE_MODELS)} models)..."):
-        models = get_models()
-        reranked_papers = ensemble_rerank(query, baseline_papers, models)
-    st.success(f"[2/3] Ensemble: scored {len(reranked_papers)} papers × {len(ENSEMBLE_MODELS)} models.")
-else:
-    with st.spinner("[2/3] Running ensemble reranking..."):
-        model = get_model()
-        reranked_papers = rerank(query, baseline_papers, model)
-    st.success(f"[2/3] Scored {len(reranked_papers)} (query, paper) pairs.")
+# Stage 2 — load models (cached) and rerank
+with st.spinner(f"[2/3] Running ensemble reranking ({len(ENSEMBLE_MODELS)} models)..."):
+    models = get_models()
+    reranked_papers = ensemble_rerank(query, baseline_papers, models)
+st.success(f"[2/3] Ensemble: scored {len(reranked_papers)} papers × {len(ENSEMBLE_MODELS)} models.")
 
 # Stage 3 — side-by-side results
 st.subheader(f"[3/3] Top-{k} results for: \"{query}\"")
@@ -118,14 +99,11 @@ with col_ensemble:
         url = paper.get("url", "")
         title_md = f"[{title}]({url})" if url else title
 
-        if use_ensemble:
-            s1 = paper.get("ce_score_model1", "N/A")
-            s2 = paper.get("ce_score_model2", "N/A")
-            s3 = paper.get("ce_score_model3", "N/A")
-            ens = paper.get("ce_score_ensemble", "N/A")
-            score_md = f"`BGE: {s1}` `MiniLM: {s2}` `Electra: {s3}` **Ensemble: {ens}**"
-        else:
-            score_md = f"`CE: {paper.get('ce_score', '')}`"
+        s1 = paper.get("ce_score_model1", "N/A")
+        s2 = paper.get("ce_score_model2", "N/A")
+        s3 = paper.get("ce_score_model3", "N/A")
+        ens = paper.get("ce_score_ensemble", "N/A")
+        score_md = f"`BGE: {s1}` `MiniLM: {s2}` `Electra: {s3}` **Ensemble: {ens}**"
 
         st.markdown(f"**#{rank}**{note}  \n{title_md}  \n{score_md}")
 
