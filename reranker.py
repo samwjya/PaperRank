@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from sentence_transformers import CrossEncoder
 
 
@@ -64,8 +65,10 @@ def rerank(query: str, papers: list[dict], model: CrossEncoder, batch_size: int 
 
 
 def load_models(model_names: list[str] = ENSEMBLE_MODELS) -> list[CrossEncoder]:
-    """Load multiple CrossEncoder models for ensemble reranking."""
-    return [load_model(name) for name in model_names]
+    """Load all CrossEncoder models in parallel using ThreadPoolExecutor."""
+    with ThreadPoolExecutor(max_workers=len(model_names)) as executor:
+        futures = [executor.submit(load_model, name) for name in model_names]
+        return [f.result() for f in futures]
 
 
 def _normalize(scores: list[float]) -> list[float]:
@@ -94,10 +97,9 @@ def ensemble_rerank(
     """
     pairs = build_pairs(query, papers)
 
-    raw_scores = [
-        list(m.predict(pairs, batch_size=batch_size, show_progress_bar=True))
-        for m in models
-    ]
+    with ThreadPoolExecutor(max_workers=len(models)) as executor:
+        futures = [executor.submit(m.predict, pairs) for m in models]
+        raw_scores = [list(f.result()) for f in futures]
     norm_scores = [_normalize(s) for s in raw_scores]
 
     n_models = len(models)
