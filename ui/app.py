@@ -5,7 +5,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit as st
 from retriever import retrieve
-from reranker import load_model, rerank
+from reranker import load_model, load_models, rerank, ensemble_rerank, ENSEMBLE_MODELS
 from evaluate import evaluate
 
 st.set_page_config(page_title="PaperRank", layout="wide")
@@ -18,18 +18,28 @@ def get_model():
     return load_model(MODEL_NAME)
 
 
+@st.cache_resource
+def get_models():
+    return load_models()
+
+
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.title("PaperRank")
+    st.title("Paper Reranking System")
     st.caption("BM25 vs CrossEncoder reranking on live papers from OpenAlex.")
     st.divider()
     query = st.text_input("Search query", placeholder="e.g. transformer models for information retrieval")
     limit = st.slider("Candidates to fetch", min_value=10, max_value=200, value=50, step=10)
     k = st.slider("Top-k results", min_value=5, max_value=20, value=10)
+    use_ensemble = st.checkbox(
+        "Ensemble mode (3 models)",
+        value=False,
+        help="Scores with BGE-M3 + MiniLM + Electra, normalizes each to [0,1], then averages.",
+    )
     run = st.button("Run pipeline", type="primary", use_container_width=True, disabled=not query.strip())
 
 # ── Main area ─────────────────────────────────────────────────────────────────
-st.title("PaperRank")
+st.title("Paper Reranking System")
 st.caption("Compare BM25 baseline retrieval with CrossEncoder reranking on live OpenAlex papers.")
 
 if not query.strip():
@@ -49,12 +59,17 @@ with st.spinner(f"[1/3] Fetching up to {limit} papers from OpenAlex..."):
 
 st.success(f"[1/3] Retrieved {len(bm25_papers)} papers with abstracts.")
 
-# Stage 2 — load model (cached) and rerank
-with st.spinner("[2/3] Loading CrossEncoder model and scoring pairs..."):
-    model = get_model()
-    reranked_papers = rerank(query, bm25_papers, model)
-
-st.success(f"[2/3] Scored {len(reranked_papers)} (query, paper) pairs.")
+# Stage 2 — load model(s) (cached) and rerank
+if use_ensemble:
+    with st.spinner(f"[2/3] Loading {len(ENSEMBLE_MODELS)} models and scoring pairs..."):
+        models = get_models()
+        reranked_papers = ensemble_rerank(query, bm25_papers, models)
+    st.success(f"[2/3] Ensemble: scored {len(reranked_papers)} papers × {len(ENSEMBLE_MODELS)} models.")
+else:
+    with st.spinner("[2/3] Loading CrossEncoder model and scoring pairs..."):
+        model = get_model()
+        reranked_papers = rerank(query, bm25_papers, model)
+    st.success(f"[2/3] Scored {len(reranked_papers)} (query, paper) pairs.")
 
 # Stage 3 — side-by-side results
 st.subheader(f"[3/3] Top-{k} results for: \"{query}\"")
@@ -88,12 +103,12 @@ with col_bm25:
         st.markdown(f"**#{rank}**{note}  \n{title_md}  \n`BM25: {score}`")
 
 with col_ce:
-    st.markdown("#### CrossEncoder Ranking")
+    heading = "Ensemble Ranking" if use_ensemble else "CrossEncoder Ranking"
+    st.markdown(f"#### {heading}")
     for paper in top_ce:
         rank = paper["ce_rank"]
         pid = paper.get("paperId", "")
         title = (paper.get("title") or "")[:80]
-        score = paper.get("ce_score", "")
 
         bm25_rank = bm25_rank_by_id.get(pid)
         if bm25_rank is not None and bm25_rank != rank:
@@ -104,7 +119,17 @@ with col_ce:
 
         url = paper.get("url", "")
         title_md = f"[{title}]({url})" if url else title
-        st.markdown(f"**#{rank}**{note}  \n{title_md}  \n`CE: {score}`")
+
+        if use_ensemble:
+            s1 = paper.get("ce_score_model1", "N/A")
+            s2 = paper.get("ce_score_model2", "N/A")
+            s3 = paper.get("ce_score_model3", "N/A")
+            ens = paper.get("ce_score_ensemble", "N/A")
+            score_md = f"`BGE: {s1}` `MiniLM: {s2}` `Electra: {s3}` **Ensemble: {ens}**"
+        else:
+            score_md = f"`CE: {paper.get('ce_score', '')}`"
+
+        st.markdown(f"**#{rank}**{note}  \n{title_md}  \n{score_md}")
 
 # ── Metrics cards ─────────────────────────────────────────────────────────────
 st.divider()
