@@ -45,7 +45,7 @@ with st.sidebar:
 
     query = st.text_input("Search query", placeholder="e.g. transformer models for information retrieval")
     limit = st.slider("Candidates to fetch", min_value=10, max_value=200, value=50, step=10)
-    k     = st.slider("Top-k results",       min_value=5,  max_value=20,  value=10)
+    k = 10
 
     st.divider()
     model_name = st.selectbox(
