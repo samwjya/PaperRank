@@ -33,7 +33,7 @@ def build_pairs(query: str, papers: list[dict]) -> list[tuple[str, str]]:
     return pairs
 
 
-def rerank(query: str, papers: list[dict], model: CrossEncoder, batch_size: int = 16) -> list[dict]:
+def rerank(query: str, papers: list[dict], model: CrossEncoder, batch_size: int = 32) -> list[dict]:
     """Score every (query, paper) pair with the CrossEncoder and return papers sorted by score.
 
     Returns the same paper dicts, each annotated with `ce_score` and `ce_rank`,
