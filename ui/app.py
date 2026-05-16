@@ -39,8 +39,10 @@ def tier_badge(score: float) -> str:
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.title("PaperRank")
-    st.caption("CrossEncoder reranking on live academic papers.")
+    # st.title("PaperRank")
+    # st.caption("CrossEncoder reranking on live academic papers.")
+    st.title("Task1")
+    st.caption("Retrieval and Reranking")
     st.divider()
 
     query = st.text_input("Search query", placeholder="e.g. transformer models for information retrieval")
@@ -115,9 +117,10 @@ if (
 
 
 # ── Main area ──────────────────────────────────────────────────────────────────
-st.title("PaperRank")
-st.caption("CrossEncoder reranking on live academic papers.")
-
+# st.title("PaperRank")
+# st.caption("CrossEncoder reranking on live academic papers.")
+st.title("Task1")
+st.caption("Retrieval and Reranking")
 if "reranked_papers" not in st.session_state:
     st.info("Enter a query in the sidebar and click **Run pipeline** to get started.")
     st.stop()
@@ -177,7 +180,7 @@ def render_ce_card(paper: dict) -> None:
     score = paper.get("ce_score", 0.0)
 
     oa_r = oa_rank_by_id.get(pid)
-    note = (f" {'↑' if rank < oa_r else '↓'} from OA #{oa_r}") if oa_r and oa_r != rank else ""
+    note = title
 
     st.markdown(
         f"**#{rank}**{note} {tier_badge(score)}  \n{title_md}  \n"
