@@ -4,3 +4,5 @@ sentence-transformers
 pandas
 torch
 einops
+groq
+python-dotenv
