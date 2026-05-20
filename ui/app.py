@@ -45,8 +45,8 @@ def tier_badge(score: float) -> str:
 with st.sidebar:
     # st.title("PaperRank")
     # st.caption("CrossEncoder reranking on live academic papers.")
-    st.title("Task1")
-    st.caption("Retrieval and Reranking")
+    st.title("PaperRank")
+    st.caption("Research Paper Finder")
     st.divider()
 
     query = st.text_input("Search query", placeholder="e.g. transformer models for information retrieval")
@@ -125,8 +125,8 @@ if (
 # ── Main area ──────────────────────────────────────────────────────────────────
 # st.title("PaperRank")
 # st.caption("CrossEncoder reranking on live academic papers.")
-st.title("Task1")
-st.caption("Retrieval and Reranking")
+st.title("PaperRank")
+st.caption("Research Paper Finder")
 if "reranked_papers" not in st.session_state:
     st.info("Enter a query in the sidebar and click **Run pipeline** to get started.")
     st.stop()
@@ -220,13 +220,13 @@ else:
 # ── Card renderer ──────────────────────────────────────────────────────────────
 def render_ce_card(paper: dict) -> None:
     rank  = paper["ce_rank"]
-    pid   = paper.get("paperId", "")
+    pid   = paper.get("paperId") or str(hash(paper.get("title", "") + str(rank)))
     title = (paper.get("title") or "")[:80]
     url   = paper.get("url", "")
     title_md = f"[{title}]({url})" if url else title
     score = paper.get("ce_score", 0.0)
 
-    oa_r = oa_rank_by_id.get(pid)
+    oa_r = oa_rank_by_id.get(paper.get("paperId", ""))
     if oa_r and oa_r != rank:
         diff = abs(oa_r - rank)
         arrow = '↑' if rank < oa_r else '↓'
@@ -239,6 +239,35 @@ def render_ce_card(paper: dict) -> None:
         f"`{paper.get('year', 'N/A')}` · {paper.get('citationCount', 'N/A')} citations · score: `{score}`",
         unsafe_allow_html=True,
     )
+
+    summary_key = f"paper_summary_{pid}"
+    if summary_key in st.session_state:
+        st.markdown(
+            '<div style="background:#1a1a2e;border-left:3px solid #6c8ebf;'
+            'padding:10px 14px;border-radius:6px;margin:6px 0 10px 0;">'
+            f'<span style="color:#a8b8d0;font-size:0.9em;">{st.session_state[summary_key]}</span>'
+            "</div>",
+            unsafe_allow_html=True,
+        )
+    else:
+        if st.button("Summarize", key=f"summarize_{pid}", help="Generate a 2-3 sentence summary"):
+            full_title = paper.get("title", "N/A")
+            abstract   = paper.get("abstract") or "No abstract available."
+            prompt = (
+                "Summarize this academic paper in 2-3 sentences focusing "
+                "on the key contribution and findings:\n"
+                f"Title: {full_title}\n"
+                f"Abstract: {abstract}"
+            )
+            with st.spinner("Generating summary..."):
+                client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+                response = client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=150,
+                )
+                st.session_state[summary_key] = response.choices[0].message.content
+            st.rerun()
 
 
 # ── Top-K results ──────────────────────────────────────────────────────────────
