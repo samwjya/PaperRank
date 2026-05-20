@@ -6,13 +6,7 @@ OPEN_ALEX_URL = "https://api.openalex.org/works"
 
 
 def _load_api_key() -> str:
-    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
-    with open(env_path) as f:
-        for line in f:
-            if line.startswith("OPEN_ALEX_API="):
-                return line.strip().split("=", 1)[1]
-    return ""
-
+    return os.environ.get("OPEN_ALEX_API", "")
 
 def _reconstruct_abstract(inverted_index: dict) -> str:
     """OpenAlex stores abstracts as an inverted index; reconstruct plain text."""

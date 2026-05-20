@@ -1,7 +1,7 @@
 from sentence_transformers import CrossEncoder
 
 
-DEFAULT_MODEL = "BAAI/bge-reranker-v2-m3"
+DEFAULT_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
 AVAILABLE_MODELS = [
     "BAAI/bge-reranker-v2-m3",
