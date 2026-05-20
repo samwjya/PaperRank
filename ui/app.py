@@ -3,7 +3,11 @@ import os
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from dotenv import load_dotenv
+load_dotenv()
+
 import streamlit as st
+from groq import Groq
 from retriever import fetch_papers
 from reranker import load_model, rerank, AVAILABLE_MODELS, DEFAULT_MODEL
 
@@ -46,7 +50,7 @@ with st.sidebar:
     st.divider()
 
     query = st.text_input("Search query", placeholder="e.g. transformer models for information retrieval")
-    limit = st.slider("Candidates to fetch", min_value=10, max_value=200, value=50, step=10)
+    limit = 50
     k = 10
 
     st.divider()
@@ -79,6 +83,8 @@ with st.sidebar:
 
 # ── Pipeline: fetch + rerank on Run click ──────────────────────────────────────
 if run and query.strip():
+    st.session_state.pop("summary", None)
+    st.session_state.pop("summary_query", None)
     with st.spinner(f"[1/3] Fetching up to {limit} papers from OpenAlex..."):
         try:
             baseline_papers = fetch_papers(query, limit=limit)
@@ -169,6 +175,47 @@ st.caption(
     f"({year_lo}–{year_hi}) · showing top {k}"
 )
 
+# ── Research Summary ───────────────────────────────────────────────────────────
+summary_exists = (
+    "summary" in st.session_state
+    and st.session_state.get("summary_query") == active_query
+)
+
+if summary_exists:
+    st.markdown(
+        '<div style="background:#0d2137;border-left:4px solid #4a9eff;'
+        'padding:16px 20px;border-radius:8px;margin:12px 0;">'
+        '<div style="color:#4a9eff;font-weight:bold;margin-bottom:8px;">'
+        'Research Summary</div>'
+        f'<div style="color:#e0e0e0;line-height:1.6;">{st.session_state["summary"]}</div>'
+        "</div>",
+        unsafe_allow_html=True,
+    )
+else:
+    if st.button("Generate Research Summary", type="secondary"):
+        top5 = filtered_reranked[:5]
+        papers_text = "\n".join(
+            f"{i}. {p.get('title', 'N/A')}: {p.get('abstract') or 'No abstract available'}"
+            for i, p in enumerate(top5, 1)
+        )
+        prompt = (
+            f"Based on these top 5 papers retrieved for the query: {active_query}\n\n"
+            f"Papers:\n{papers_text}\n\n"
+            "Write a concise 150 word synthesis of the key themes and "
+            "findings relevant to the query. Focus on what the papers "
+            "collectively say about the topic."
+        )
+        with st.spinner("Generating research summary..."):
+            client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+            response = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=300,
+            )
+            st.session_state["summary"] = response.choices[0].message.content
+            st.session_state["summary_query"] = active_query
+        st.rerun()
+
 
 # ── Card renderer ──────────────────────────────────────────────────────────────
 def render_ce_card(paper: dict) -> None:
@@ -180,10 +227,15 @@ def render_ce_card(paper: dict) -> None:
     score = paper.get("ce_score", 0.0)
 
     oa_r = oa_rank_by_id.get(pid)
-    note = title
+    if oa_r and oa_r != rank:
+        diff = abs(oa_r - rank)
+        arrow = '↑' if rank < oa_r else '↓'
+        note = f"{title } (#{oa_r} → #{rank}){arrow}{diff}"
+    else:
+        note = ""
 
     st.markdown(
-        f"**#{rank}**{note} {tier_badge(score)}  \n{title_md}  \n"
+        f"**#{rank}**{ note} {tier_badge(score)}  \n{title_md}  \n"
         f"`{paper.get('year', 'N/A')}` · {paper.get('citationCount', 'N/A')} citations · score: `{score}`",
         unsafe_allow_html=True,
     )
