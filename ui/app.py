@@ -1,15 +1,19 @@
-import sys
 import os
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from dotenv import load_dotenv, find_dotenv
+load_dotenv(find_dotenv())
 
-from dotenv import load_dotenv
-load_dotenv()
-
+import requests
 import streamlit as st
-from groq import Groq
-from retriever import fetch_papers
-from reranker import load_model, rerank, AVAILABLE_MODELS, DEFAULT_MODEL
+
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
+
+AVAILABLE_MODELS = [
+    "BAAI/bge-reranker-v2-m3",
+    "cross-encoder/ms-marco-MiniLM-L-6-v2",
+    "cross-encoder/ms-marco-electra-base",
+]
+DEFAULT_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
 st.set_page_config(page_title="PaperRank", layout="wide")
 
@@ -21,10 +25,48 @@ TIER_CONFIG = [
 ]
 
 
-@st.cache_resource
-def get_model(model_name: str):
-    return load_model(model_name)
+# ── API helpers ────────────────────────────────────────────────────────────────
 
+def _call_search(query: str, limit: int, model_name: str) -> list[dict]:
+    resp = requests.post(
+        f"{BACKEND_URL}/search",
+        json={"query": query, "limit": limit, "model_name": model_name},
+        timeout=120,
+    )
+    resp.raise_for_status()
+    return resp.json()["papers"]
+
+
+def _call_summarize(title: str, abstract: str) -> str:
+    resp = requests.post(
+        f"{BACKEND_URL}/summarize",
+        json={"title": title, "abstract": abstract},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    return resp.json()["summary"]
+
+
+def _call_research_summary(query: str, papers: list[dict]) -> str:
+    resp = requests.post(
+        f"{BACKEND_URL}/research-summary",
+        json={"query": query, "papers": papers},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    return resp.json()["summary"]
+
+
+def _api_error(e: Exception) -> str:
+    if isinstance(e, requests.ConnectionError):
+        return f"Cannot reach backend at {BACKEND_URL}. Is the API server running?"
+    if isinstance(e, requests.HTTPError) and e.response is not None:
+        detail = e.response.json().get("detail", str(e))
+        return f"Backend error: {detail}"
+    return f"Request failed: {e}"
+
+
+# ── UI helpers ─────────────────────────────────────────────────────────────────
 
 def tier_badge(score: float) -> str:
     if score >= 0.90:
@@ -43,8 +85,6 @@ def tier_badge(score: float) -> str:
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 with st.sidebar:
-    # st.title("PaperRank")
-    # st.caption("CrossEncoder reranking on live academic papers.")
     st.title("PaperRank")
     st.caption("Research Paper Finder")
     st.divider()
@@ -85,46 +125,39 @@ with st.sidebar:
 if run and query.strip():
     st.session_state.pop("summary", None)
     st.session_state.pop("summary_query", None)
-    with st.spinner(f"[1/3] Fetching up to {limit} papers from OpenAlex..."):
+    with st.spinner(f"Fetching and reranking with {model_name}..."):
         try:
-            baseline_papers = fetch_papers(query, limit=limit)
+            papers = _call_search(query, limit, model_name)
         except Exception as e:
-            st.error(f"Fetch failed: {e}")
+            st.error(_api_error(e))
             st.stop()
 
-    st.success(f"[1/3] Retrieved {len(baseline_papers)} papers with abstracts.")
-    st.session_state["baseline_papers"] = baseline_papers
+    st.session_state["reranked_papers"] = papers
     st.session_state["active_query"]    = query
-
-    with st.spinner(f"[2/3] Reranking {len(baseline_papers)} papers with {model_name}..."):
-        model = get_model(model_name)
-        st.session_state["reranked_papers"] = rerank(query, baseline_papers, model)
-        st.session_state["active_model"]    = model_name
-
-    # Rerun so the year slider updates to the actual bounds before results render
+    st.session_state["active_model"]    = model_name
     st.rerun()
 
 
-# ── Pipeline: re-rerank when model changes (no new fetch needed) ───────────────
+# ── Re-search when model changes without a new Run click ───────────────────────
 if (
     not run
-    and "baseline_papers" in st.session_state
+    and "reranked_papers" in st.session_state
     and st.session_state.get("active_model") != model_name
 ):
     with st.spinner(f"Switching model to {model_name}..."):
-        model = get_model(model_name)
-        st.session_state["reranked_papers"] = rerank(
-            st.session_state["active_query"],
-            st.session_state["baseline_papers"],
-            model,
-        )
-        st.session_state["active_model"] = model_name
+        try:
+            papers = _call_search(
+                st.session_state["active_query"], limit, model_name
+            )
+        except Exception as e:
+            st.error(_api_error(e))
+            st.stop()
+    st.session_state["reranked_papers"] = papers
+    st.session_state["active_model"]    = model_name
     st.rerun()
 
 
 # ── Main area ──────────────────────────────────────────────────────────────────
-# st.title("PaperRank")
-# st.caption("CrossEncoder reranking on live academic papers.")
 st.title("PaperRank")
 st.caption("Research Paper Finder")
 if "reranked_papers" not in st.session_state:
@@ -146,7 +179,6 @@ def in_year_range(paper: dict) -> bool:
 
 filtered_reranked = [p for p in reranked_papers if in_year_range(p)]
 
-# Tier counts from the full year-filtered reranked list (not just top k)
 tier_counts = {label: 0 for label, _, _ in TIER_CONFIG}
 for paper in filtered_reranked:
     score = paper.get("ce_score", 0.0)
@@ -155,7 +187,6 @@ for paper in filtered_reranked:
             tier_counts[label] += 1
             break
 
-# Rank-change lookups (CE rank vs original OpenAlex rank)
 oa_rank_by_id = {p["paperId"]: p["openalex_rank"] for p in filtered_reranked if p.get("paperId")}
 
 # ── Header ─────────────────────────────────────────────────────────────────────
@@ -193,27 +224,14 @@ if summary_exists:
     )
 else:
     if st.button("Generate Research Summary", type="secondary"):
-        top5 = filtered_reranked[:5]
-        papers_text = "\n".join(
-            f"{i}. {p.get('title', 'N/A')}: {p.get('abstract') or 'No abstract available'}"
-            for i, p in enumerate(top5, 1)
-        )
-        prompt = (
-            f"Based on these top 5 papers retrieved for the query: {active_query}\n\n"
-            f"Papers:\n{papers_text}\n\n"
-            "Write a concise 150 word synthesis of the key themes and "
-            "findings relevant to the query. Focus on what the papers "
-            "collectively say about the topic."
-        )
         with st.spinner("Generating research summary..."):
-            client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-            response = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=300,
-            )
-            st.session_state["summary"] = response.choices[0].message.content
-            st.session_state["summary_query"] = active_query
+            try:
+                summary = _call_research_summary(active_query, filtered_reranked[:5])
+            except Exception as e:
+                st.error(_api_error(e))
+                st.stop()
+        st.session_state["summary"]       = summary
+        st.session_state["summary_query"] = active_query
         st.rerun()
 
 
@@ -230,7 +248,7 @@ def render_ce_card(paper: dict) -> None:
     if oa_r and oa_r != rank:
         diff = abs(oa_r - rank)
         arrow = '↑' if rank < oa_r else '↓'
-        note = f"{title } (#{oa_r} → #{rank}){arrow}{diff}"
+        note = f"{title} (#{oa_r} → #{rank}){arrow}{diff}"
     else:
         note = ""
 
@@ -251,22 +269,16 @@ def render_ce_card(paper: dict) -> None:
         )
     else:
         if st.button("Summarize", key=f"summarize_{pid}", help="Generate a 2-3 sentence summary"):
-            full_title = paper.get("title", "N/A")
-            abstract   = paper.get("abstract") or "No abstract available."
-            prompt = (
-                "Summarize this academic paper in 2-3 sentences focusing "
-                "on the key contribution and findings:\n"
-                f"Title: {full_title}\n"
-                f"Abstract: {abstract}"
-            )
             with st.spinner("Generating summary..."):
-                client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-                response = client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
-                    messages=[{"role": "user", "content": prompt}],
-                    max_tokens=150,
-                )
-                st.session_state[summary_key] = response.choices[0].message.content
+                try:
+                    paper_summary = _call_summarize(
+                        paper.get("title", "N/A"),
+                        paper.get("abstract") or "No abstract available.",
+                    )
+                except Exception as e:
+                    st.error(_api_error(e))
+                    st.stop()
+            st.session_state[summary_key] = paper_summary
             st.rerun()
 
 
@@ -280,7 +292,7 @@ if not top_reranked:
 for paper in top_reranked:
     render_ce_card(paper)
 
-# ── Expander: remaining papers (rank k+1 to end of filtered list) ──────────────
+# ── Expander: remaining papers ──────────────────────────────────────────────────
 rest_reranked = filtered_reranked[k:]
 
 if rest_reranked:
