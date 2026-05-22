@@ -4,9 +4,9 @@ from sentence_transformers import CrossEncoder
 DEFAULT_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
 AVAILABLE_MODELS = [
-    "BAAI/bge-reranker-v2-m3",
-    "cross-encoder/ms-marco-MiniLM-L-6-v2",
-    "cross-encoder/ms-marco-electra-base",
+    # "BAAI/bge-reranker-v2-m3",
+    "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    # "cross-encoder/ms-marco-electra-base"
 ]
 
 
