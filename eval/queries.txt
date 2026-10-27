@@ -1,0 +1,12 @@
+# One research question per line. Lines starting with # are ignored.
+# Replace or extend with real questions from your users.
+effects of microplastics on gut microbiome in zebrafish larvae
+CRISPR delivery methods for liver diseases in vivo
+role of gut microbiota in Parkinson's disease progression
+single-cell RNA sequencing of tumor-infiltrating T cells in melanoma
+antibiotic resistance gene transfer in wastewater treatment plants
+machine learning prediction of protein-ligand binding affinity
+effects of sleep deprivation on hippocampal neurogenesis in rodents
+reducing cloud infrastructure costs using Kubernetes autoscaling, workload scheduling, or resource optimization
+efficient resource scheduling distributed computing
+recent advances in AI research assistants
