@@ -1,11 +1,10 @@
-requests
-rank_bm25
-sentence-transformers
-pandas
-torch
-einops
-groq
-python-dotenv
-streamlit
-fastapi
-uvicorn[standard]
+# Pinned to the versions the pipeline was tested with (Python 3.13).
+# The Dockerfile installs a CPU-only torch build first; locally, pip uses
+# the regular torch wheel.
+requests==2.34.2
+torch==2.12.1
+transformers==5.12.1
+sentence-transformers==5.6.0
+groq==1.5.0
+python-dotenv==1.2.2
+streamlit==1.58.0
