@@ -13,6 +13,8 @@ short_description: Find papers for a research question and spot gaps
 
 # PaperRank
 
+**Try it live:** https://huggingface.co/spaces/samuelw67/PaperRank
+
 Searching for papers usually goes like this: you type a question, get fifty
 results, and spend the next hour opening abstracts to figure out which ones
 actually answer it. PaperRank tries to do that first pass for you.
@@ -124,6 +126,9 @@ These are all optional environment variables:
 - `DAILY_SEARCH_LIMIT`: a cap on searches across all users per day (default 100)
 
 ## Deploying to Hugging Face Spaces
+
+The live version runs at https://huggingface.co/spaces/samuelw67/PaperRank on
+the free CPU tier. To deploy your own copy:
 
 1. Create a new Space at https://huggingface.co/new-space, pick **Gradio**
    as the SDK and **CPU basic (free)** as the hardware.
