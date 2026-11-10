@@ -1,11 +1,12 @@
-requests
-rank_bm25
-sentence-transformers
-pandas
-torch
-einops
-groq
-python-dotenv
-streamlit
-fastapi
-uvicorn[standard]
+# Use PyTorch's CPU-only builds (~200 MB) instead of the default Linux wheel,
+# which drags in ~2 GB of CUDA libraries a CPU server can't use.
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+# Pinned to the versions the pipeline was tested with (Python 3.13).
+requests==2.34.2
+torch==2.12.1
+transformers==5.12.1
+sentence-transformers==5.6.0
+groq==1.5.0
+python-dotenv==1.2.2
+gradio==6.30.0

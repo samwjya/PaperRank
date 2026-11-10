@@ -1,3 +1,6 @@
 .env
 CLAUDE.md
-
+__pycache__/
+*.pyc
+.venv/
+eval/dataset.json

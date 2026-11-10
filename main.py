@@ -1,57 +1,77 @@
+"""PaperRank command line: the same pipeline as the web app, printed to the terminal.
+
+    python main.py "effects of microplastics on gut microbiome in zebrafish larvae"
+"""
 import argparse
 import sys
 
-from retriever import fetch_papers
-from reranker import load_models, ensemble_rerank, ENSEMBLE_MODELS
-from evaluate import evaluate, print_results
+from dotenv import load_dotenv
+
+load_dotenv()
+
+from analyzer import LLMError, assess_coverage, decompose, find_gaps
+from reranker import AVAILABLE_MODELS, DEFAULT_MODEL, load_model, rerank
+from retriever import multi_search
+
+
+STATUS_MARK = {"covered": "✓", "partial": "~", "missing": "✗"}
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="paperrank",
-        description="Rank academic papers with OpenAlex + CrossEncoder ensemble reranking",
+        description="Find papers for a research question, check aspect coverage, and spot possible gaps",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("query", type=str, help="Search query")
-    parser.add_argument(
-        "--limit", type=int, default=50,
-        help="Number of candidate papers to fetch from OpenAlex",
-    )
-    parser.add_argument(
-        "--k", type=int, default=10,
-        help="Top-k cutoff for display and evaluation metrics (NDCG@k, MRR)",
-    )
-    parser.add_argument(
-        "--relevant-ids", nargs="*", default=None, metavar="PAPER_ID",
-        help="OpenAlex paper IDs to treat as relevant (for NDCG/MRR). "
-             "If omitted, pseudo-relevance (OpenAlex top-k) is used.",
-    )
+    parser.add_argument("question", type=str, help="Research question in plain language")
+    parser.add_argument("--model", default=DEFAULT_MODEL, choices=AVAILABLE_MODELS, help="Reranker model")
+    parser.add_argument("--top", type=int, default=5, help="Papers to analyze and display")
     return parser.parse_args()
 
 
 def main() -> None:
+    sys.stdout.reconfigure(encoding="utf-8")  # Windows consoles default to cp1252
     args = parse_args()
 
-    # ── Stage 1: Fetch ───────────────────────────────────────────────────────
-    print(f"\n[1/3] Fetching papers from OpenAlex ...")
-    try:
-        baseline_papers = fetch_papers(args.query, limit=args.limit)
-    except ValueError as e:
-        print(f"Error: {e}", file=sys.stderr)
+    print("[1/4] Breaking the question into aspects ...")
+    plan = decompose(args.question)
+    print("      Aspects    :", ", ".join(a["name"] for a in plan["aspects"]) or "(none: LLM unavailable)")
+    print("      Sub-queries:", *plan["sub_queries"], sep="\n        - ")
+
+    print("[2/4] Searching OpenAlex ...")
+    papers = multi_search(plan["sub_queries"])
+    if not papers:
+        print("No papers with abstracts found. Try rephrasing.", file=sys.stderr)
         sys.exit(1)
-    print(f"      Retrieved {len(baseline_papers)} papers with abstracts.")
 
-    # ── Stage 2: Rerank ──────────────────────────────────────────────────────
-    print(f"\n[2/3] Running ensemble reranking ({len(ENSEMBLE_MODELS)} models) ...")
-    models = load_models()
-    print(f"      Scoring {len(baseline_papers)} papers × {len(ENSEMBLE_MODELS)} models ...")
-    reranked_papers = ensemble_rerank(args.query, baseline_papers, models)
+    print(f"[3/4] Reranking {len(papers)} candidates with {args.model} ...")
+    top = rerank(args.question, papers, load_model(args.model))[:args.top]
 
-    # ── Stage 3: Evaluate & Display ──────────────────────────────────────────
-    print(f"\n[3/3] Evaluating results ...\n")
-    relevant_ids = set(args.relevant_ids) if args.relevant_ids else None
-    metrics = evaluate(baseline_papers, reranked_papers, relevant_ids=relevant_ids, k=args.k)
-    print_results(args.query, baseline_papers, reranked_papers, metrics, k=args.k, ensemble=True)
+    print("[4/4] Checking coverage ...")
+    try:
+        assessments = assess_coverage(args.question, plan["aspects"], top)
+    except LLMError as e:
+        print(f"      Coverage unavailable: {e}")
+        assessments = [None] * len(top)
+
+    for paper, r in zip(top, assessments):
+        coverage = f"{r['coverage']}% coverage" if r and r["coverage"] is not None else "not analyzed"
+        print(f"\n#{paper['ce_rank']} [{coverage}, match {paper['ce_score']:.2f}] {paper['title']}")
+        print(f"   {paper.get('year') or 'n.d.'} · {paper.get('citationCount') or 0} citations · {paper.get('url', '')}")
+        for a in (r or {}).get("aspects", []):
+            print(f"   {STATUS_MARK[a['status']]} {a['name']}" + (f'  "{a["evidence"]}"' if a["evidence"] else ""))
+        if r and r["note"]:
+            print(f"   not addressed: {r['note']}")
+
+    if all(assessments):
+        gaps = find_gaps(plan["aspects"], assessments)
+        print("\nPossible gaps (leads to verify, not proof)")
+        print("  Not fully covered by any top paper:", ", ".join(gaps["uncovered"]) or "none")
+        if gaps["full_count"] is not None:
+            print(f"  All aspects together ({gaps['full_query']!r}): {gaps['full_count']} papers")
+            for b in gaps["bottlenecks"]:
+                ratio = b["count_without"] / max(gaps["full_count"], 1)
+                print(f"    without '{b['aspect']}': {b['count_without']} papers ({ratio:.0f}x more)")
 
 
 if __name__ == "__main__":
