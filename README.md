@@ -3,8 +3,10 @@ title: PaperRank
 emoji: 📄
 colorFrom: blue
 colorTo: indigo
-sdk: docker
-app_port: 7860
+sdk: gradio
+sdk_version: 6.30.0
+python_version: "3.12"
+app_file: app.py
 pinned: false
 short_description: Find papers for a research question and spot gaps
 ---
@@ -54,16 +56,18 @@ not conclusions.
 
 ## What's in here
 
+There's no separate backend. `app.py` is the whole web app: Gradio serves the
+page and runs the pipeline in the same Python process.
+
 | File | What it does |
 |---|---|
-| `app.py` | The Streamlit web app. Search box, results, coverage bars, year filter, per-paper summaries, plus some rate limiting so a public deploy doesn't burn through API budgets. |
+| `app.py` | The Gradio web app. Search box, results, coverage bars, year filter, per-paper summaries, plus caching and rate limiting so a public deploy doesn't burn through API budgets. |
 | `retriever.py` | Talks to OpenAlex. Runs searches (several at once), rebuilds abstracts from OpenAlex's odd inverted-index format, and counts matching papers for the gap check. |
 | `reranker.py` | Loads a CrossEncoder and reranks papers. Every model's scores get squashed to 0–1 so they're comparable. |
 | `analyzer.py` | All the LLM parts: breaking down the question, checking coverage, finding gaps, writing summaries. |
 | `main.py` | The same pipeline from the command line, if you don't want to open a browser. |
 | `evaluate.py` | Offline evaluation (NDCG@10, MRR) comparing plain OpenAlex ranking against multi-query search and reranking. Questions live in `eval/queries.txt`. |
-| `Dockerfile` | How the app gets packaged for Hugging Face Spaces. Uses CPU-only PyTorch to keep the image small. |
-| `requirements.txt` | Python dependencies, pinned to versions I've tested. |
+| `requirements.txt` | Python dependencies, pinned to versions I've tested. Pulls the CPU-only build of PyTorch to keep installs small. |
 
 ## Reranker models
 
@@ -96,13 +100,17 @@ GROQ_API_KEY=your_groq_key
 OPEN_ALEX_API=your_openalex_key   # optional, but gives you your own daily budget
 ```
 
-Then start the app:
+Then start the app and keep the terminal open while you use it:
 
 ```bash
-streamlit run app.py
+python app.py
 ```
 
-It opens at http://localhost:8501. Or skip the browser:
+It opens at http://127.0.0.1:7860. A new question takes anywhere from 20
+seconds to a minute (most of that is OpenAlex and the reranker). Asking the
+same thing again is instant because results are cached for a day.
+
+Or skip the browser:
 
 ```bash
 python main.py "CRISPR delivery methods for liver diseases in vivo" --top 5
@@ -117,25 +125,21 @@ These are all optional environment variables:
 
 ## Deploying to Hugging Face Spaces
 
-1. Create a new Space at https://huggingface.co/new-space and pick
-   **Docker** → **Blank** as the SDK.
+1. Create a new Space at https://huggingface.co/new-space, pick **Gradio**
+   as the SDK and **CPU basic (free)** as the hardware.
 2. In the Space's **Settings → Variables and secrets**, add `GROQ_API_KEY`
    (and `OPEN_ALEX_API` if you have one) as **secrets**.
 3. Push this repo to the Space:
    ```bash
    git remote add space https://huggingface.co/spaces/<your-username>/PaperRank
-   git push space main
+   git push --force space main
    ```
+   When git asks for a password, use a Hugging Face access token with write
+   access, not your account password.
 
-The block at the top of this README tells Spaces to build the `Dockerfile` and
-serve port 7860. The first build takes a few minutes, mostly because of PyTorch.
-
-To try the Docker image locally first:
-
-```bash
-docker build -t paperrank .
-docker run --rm -p 7860:7860 --env-file .env paperrank
-```
+The block at the top of this README tells Spaces which Gradio and Python
+versions to use and to run `app.py`. The first build takes a few minutes,
+mostly installing PyTorch. After that, every push rebuilds the Space.
 
 ## Evaluation
 
