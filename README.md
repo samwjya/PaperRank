@@ -13,7 +13,7 @@ short_description: Find papers for a research question and spot gaps
 
 # PaperRank
 
-**Try it live:** https://huggingface.co/spaces/samuelw67/PaperRank
+**Try it live:** https://samuelw67-paperrank.hf.space
 
 Searching for papers usually goes like this: you type a question, get fifty
 results, and spend the next hour opening abstracts to figure out which ones
