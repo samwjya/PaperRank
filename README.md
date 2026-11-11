@@ -26,8 +26,7 @@ parts of your question each paper covers, with quotes from the abstract as proof
 It also points out combinations that look understudied, which is handy if
 you're hunting for a research gap.
 
-I built it for the Forward Data Lab research task at UIUC. The two-stage
-"retrieve fast, then rerank carefully" idea comes from
+The two-stage "retrieve fast, then rerank carefully" idea comes from
 [Multi-Reranker (Lee & Roh, ACM-ICAIF 2024)](https://arxiv.org/abs/2411.16732),
 which used it for financial documents. I wanted to see how well it holds up for
 academic search.
@@ -155,15 +154,6 @@ python evaluate.py run     # score each ranking method and print NDCG / MRR
 
 The relevance labels come from an LLM judge, so they're a starting point. If
 you want numbers you can really trust, fix them by hand in `eval/dataset.json`.
-
-## Limitations
-
-- It only sees abstracts, not full papers. If something's only in the methods
-  section, PaperRank won't know about it.
-- A "gap" can just mean people use different words for the same thing.
-- OpenAlex's semantic search returns at most 50 results per query, which is
-  why PaperRank runs several queries instead of one big one.
-- On a free CPU Space, BGE is slow. Give it a bit.
 
 ## Credits
 
